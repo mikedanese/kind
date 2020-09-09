@@ -17,11 +17,13 @@ limitations under the License.
 package kube
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 
+	"google.golang.org/protobuf/proto"
+
+	"sigs.k8s.io/kind/pkg/build/nodeimage/internal/bazelapi"
 	"sigs.k8s.io/kind/pkg/errors"
 	"sigs.k8s.io/kind/pkg/exec"
 	"sigs.k8s.io/kind/pkg/log"
@@ -126,38 +128,19 @@ func (b *bazelBuilder) Build() (Bits, error) {
 }
 
 func findGoBinary(label string) (string, error) {
-	// This output of bazel aquery --output=jsonproto is an ActionGraphContainer
-	// as defined in:
-	//
-	// https://cs.opensource.google/bazel/bazel/+/master:src/main/protobuf/analysis.proto
-	type (
-		Action struct {
-			Mnemonic  string   `json:"mnemonic"`
-			OutputIDs []string `json:"outputIds"`
-		}
-		Artifact struct {
-			ID       string `json:"id"`
-			ExecPath string `json:"execPath"`
-		}
-		ActionGraphContainer struct {
-			Artifacts []Artifact `json:"artifacts"`
-			Actions   []Action   `json:"actions"`
-		}
-	)
-
-	cmd := exec.Command("bazel", "aquery", "--output=jsonproto", label)
+	cmd := exec.Command("bazel", "aquery", "--output=proto", label)
 	exec.InheritOutput(cmd)
 
 	actionBytes, err := exec.Output(cmd)
 	if err != nil {
 		return "", errors.Wrap(err, "failed to query action graph")
 	}
-	var agc ActionGraphContainer
-	if err := json.Unmarshal(actionBytes, &agc); err != nil {
+	var agc bazelapi.ActionGraphContainer
+	if err := proto.Unmarshal(actionBytes, &agc); err != nil {
 		return "", errors.Wrap(err, "failed to unpack action graph container")
 	}
 
-	var linkActions []Action
+	var linkActions []*bazelapi.Action
 	for _, action := range agc.Actions {
 		if action.Mnemonic == "GoLink" {
 			linkActions = append(linkActions, action)
@@ -167,14 +150,14 @@ func findGoBinary(label string) (string, error) {
 		return "", fmt.Errorf("unexpected number of link actions %d, wanted 1", len(linkActions))
 	}
 	linkAction := linkActions[0]
-	if len(linkAction.OutputIDs) != 1 {
-		return "", fmt.Errorf("unexpected number of link action outputs %d, wanted 1", len(linkAction.OutputIDs))
+	if len(linkAction.GetOutputIds()) != 1 {
+		return "", fmt.Errorf("unexpected number of link action outputs %d, wanted 1", len(linkAction.GetOutputIds()))
 	}
-	outputID := linkAction.OutputIDs[0]
+	outputID := linkAction.GetOutputIds()[0]
 
-	for _, artifact := range agc.Artifacts {
-		if artifact.ID == outputID {
-			return artifact.ExecPath, nil
+	for _, artifact := range agc.GetArtifacts() {
+		if artifact.GetId() == outputID {
+			return artifact.GetExecPath(), nil
 		}
 	}
 	// We really should never get here

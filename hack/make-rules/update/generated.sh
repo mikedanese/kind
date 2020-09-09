@@ -24,8 +24,11 @@ source hack/build/setup-go.sh
 # build the generators using the tools module
 cd "${REPO_ROOT}/hack/tools"
 go build -o "${REPO_ROOT}/bin/deepcopy-gen" k8s.io/code-generator/cmd/deepcopy-gen
+go build -o "${REPO_ROOT}/bin/protoc-gen-go" google.golang.org/protobuf/cmd/protoc-gen-go
 # go back to the root
 cd "${REPO_ROOT}"
+
+export PATH="${REPO_ROOT}/bin/:${PATH}"
 
 # turn off module mode before running the generators
 # https://github.com/kubernetes/code-generator/issues/69
@@ -33,8 +36,10 @@ cd "${REPO_ROOT}"
 
 # run the generators
 # TODO: -o "${REPO_ROOT}/../.." is a weird work-around ...
-bin/deepcopy-gen -i ./pkg/internal/apis/config/ -o "${REPO_ROOT}/../.." -O zz_generated.deepcopy --go-header-file hack/tools/boilerplate.go.txt
-bin/deepcopy-gen -i ./pkg/apis/config/v1alpha4 -o "${REPO_ROOT}/../.." -O zz_generated.deepcopy --go-header-file hack/tools/boilerplate.go.txt
+deepcopy-gen -i ./pkg/internal/apis/config/ -o "${REPO_ROOT}/../.." -O zz_generated.deepcopy --go-header-file hack/tools/boilerplate.go.txt
+deepcopy-gen -i ./pkg/apis/config/v1alpha4 -o "${REPO_ROOT}/../.." -O zz_generated.deepcopy --go-header-file hack/tools/boilerplate.go.txt
+
+protoc --go_out=paths=source_relative:. pkg/build/nodeimage/internal/bazelapi/analysis.proto
 
 
 # set module mode back, return to repo root and gofmt to ensure we format generated code

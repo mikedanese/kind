@@ -15,4 +15,7 @@ import (
 
 	// test runner
 	_ "gotest.tools/gotestsum"
+
+	// standard go proto compiler
+	_ "google.golang.org/protobuf/cmd/protoc-gen-go"
 )
